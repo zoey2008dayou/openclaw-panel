@@ -3,13 +3,27 @@ import { invoke } from '@tauri-apps/api/core'
 import { ExternalLink, CheckCircle, Loader2, Save } from 'lucide-react'
 
 interface OpenClawConfig {
-  models?: any
+  models?: {
+    mode?: string
+    providers?: Record<string, {
+      base_url?: string
+      api_key?: string
+      api?: string
+      models?: { id: string; name?: string }[]
+    }>
+  }
   channels?: {
     feishu?: {
       enabled: boolean
       app_id?: string
       app_secret?: string
-      connection_mode?: string
+    }
+  }
+  plugins?: {
+    entries?: {
+      feishu?: {
+        enabled: boolean
+      }
     }
   }
   gateway?: any
@@ -19,17 +33,16 @@ export default function FeishuConfig() {
   const [config, setConfig] = useState<OpenClawConfig>({})
   const [appId, setAppId] = useState('')
   const [appSecret, setAppSecret] = useState('')
-  const [connectionMode, setConnectionMode] = useState('websocket')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     invoke<OpenClawConfig>('read_config').then(cfg => {
       setConfig(cfg)
+      // 从 channels.feishu 读取配置
       if (cfg.channels?.feishu) {
         setAppId(cfg.channels.feishu.app_id || '')
         setAppSecret(cfg.channels.feishu.app_secret || '')
-        setConnectionMode(cfg.channels.feishu.connection_mode || 'websocket')
       }
     })
   }, [])
@@ -39,13 +52,22 @@ export default function FeishuConfig() {
     try {
       const newConfig = {
         ...config,
+        // 飞书通道配置
         channels: {
           ...config.channels,
           feishu: {
             enabled: true,
             app_id: appId,
             app_secret: appSecret,
-            connection_mode: connectionMode
+          }
+        },
+        // 插件启用配置
+        plugins: {
+          entries: {
+            ...config.plugins?.entries,
+            feishu: {
+              enabled: true
+            }
           }
         }
       }
@@ -100,33 +122,9 @@ export default function FeishuConfig() {
           type="password"
           value={appSecret}
           onChange={e => setAppSecret(e.target.value)}
-          className="w-full px-4 py-2 border border-gray-200 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-4 py-2 border border-gray-200 rounded-lg mb-6 focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="••••••••••••••••"
         />
-
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          连接模式
-        </label>
-        <div className="flex gap-4 mb-6">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              checked={connectionMode === 'websocket'}
-              onChange={() => setConnectionMode('websocket')}
-              className="text-blue-600"
-            />
-            <span>WebSocket (推荐)</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              checked={connectionMode === 'webhook'}
-              onChange={() => setConnectionMode('webhook')}
-              className="text-blue-600"
-            />
-            <span>Webhook</span>
-          </label>
-        </div>
 
         <div className="flex gap-3">
           <button

@@ -4,9 +4,11 @@ import { CheckCircle, Loader2, Save } from 'lucide-react'
 
 interface OpenClawConfig {
   models?: {
+    mode?: string
     providers?: Record<string, {
       base_url?: string
       api_key?: string
+      api?: string
       models?: { id: string; name?: string }[]
     }>
   }
@@ -15,10 +17,13 @@ interface OpenClawConfig {
 }
 
 const PROVIDERS = [
-  { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1' },
-  { id: 'anthropic', name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1' },
-  { id: 'qwencode', name: 'Qwen (通义千问)', baseUrl: 'https://coding.dashscope.aliyuncs.com/v1' },
-  { id: 'local', name: '本地模型', baseUrl: 'http://localhost:11434/v1' },
+  { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', api: 'openai-completions' },
+  { id: 'anthropic', name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', api: 'anthropic-completions' },
+  { id: 'qwencode', name: 'Qwen (通义千问)', baseUrl: 'https://coding.dashscope.aliyuncs.com/v1', api: 'openai-completions' },
+  { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', api: 'openai-completions' },
+  { id: 'moonshot', name: 'Moonshot (Kimi)', baseUrl: 'https://api.moonshot.cn/v1', api: 'openai-completions' },
+  { id: 'zhipu', name: '智谱 GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', api: 'openai-completions' },
+  { id: 'local', name: '本地模型 (Ollama)', baseUrl: 'http://localhost:11434/v1', api: 'openai-completions' },
 ]
 
 export default function ModelConfig() {
@@ -48,20 +53,24 @@ export default function ModelConfig() {
   const handleProviderChange = (id: string) => {
     setProvider(id)
     const p = PROVIDERS.find(p => p.id === id)
-    if (p) setBaseUrl(p.baseUrl)
+    if (p) {
+      setBaseUrl(p.baseUrl)
+    }
   }
 
   const handleSave = async () => {
     setSaving(true)
     try {
+      const selectedProvider = PROVIDERS.find(p => p.id === provider)
       const newConfig = {
         ...config,
         models: {
+          mode: 'merge',
           providers: {
             [provider]: {
               base_url: baseUrl,
               api_key: apiKey,
-              api: 'openai-completions',
+              api: selectedProvider?.api || 'openai-completions',
               models: [{ id: 'default', name: 'Default Model' }]
             }
           }
