@@ -40,8 +40,8 @@ export default function Welcome() {
       const result = await invoke<string>('install_openclaw')
       setInstallResult({ success: true, message: result })
       setTimeout(checkInstall, 1000)
-    } catch (e) {
-      setInstallResult({ success: false, message: e.toString() })
+    } catch (e: unknown) {
+      setInstallResult({ success: false, message: e instanceof Error ? e.message : String(e) })
     } finally {
       setInstalling(false)
     }
