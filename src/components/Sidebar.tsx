@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
-import { Cpu, MessageCircle, Server, CheckCircle, AlertCircle } from 'lucide-react'
+import { Cpu, MessageCircle, Server, CheckCircle, AlertCircle, Smartphone } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 
 interface OpenClawInfo {
@@ -12,10 +12,11 @@ interface OpenClawInfo {
 const navItems = [
   { to: '/app/model', icon: Cpu, label: '模型配置' },
   { to: '/app/feishu', icon: MessageCircle, label: '飞书通道' },
+  { to: '/app/qqbot', icon: MessageCircle, label: 'QQ Bot' },
+  { to: '/app/weixin', icon: Smartphone, label: '微信通道' },
   { to: '/app/gateway', icon: Server, label: 'Gateway' },
 ]
 
-// 支持的最低版本
 const MIN_VERSION = '2026.3.1'
 const COMPATIBLE_VERSION = '2026.3.13'
 
@@ -80,14 +81,11 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* 版本兼容性信息 */}
       <div className="p-4 border-t border-gray-200 space-y-2">
-        {/* Panel 版本 */}
         <div className="text-xs text-gray-400">
-          Panel v0.1.3
+          Panel v0.1.5
         </div>
         
-        {/* OpenClaw 版本状态 */}
         {info ? (
           <div className={`text-xs p-2 rounded-lg ${
             compat.status === 'ok' ? 'bg-green-50 text-green-700' :
@@ -108,7 +106,6 @@ export default function Sidebar() {
           <div className="text-xs text-gray-400">检测中...</div>
         )}
         
-        {/* 兼容性说明 */}
         <div className="text-xs text-gray-400">
           配置格式: OpenClaw 2026.3.13
         </div>

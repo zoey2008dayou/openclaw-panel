@@ -44,12 +44,24 @@ pub struct ModelInfo {
     pub name: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ChannelsConfig {
-    // 保留 channels.feishu 兼容性
+    /// QQ Bot 通道配置
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub qqbot: Option<QQBotChannelConfig>,
+    /// 飞书通道配置 (旧版兼容)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub feishu: Option<FeishuChannelConfig>,
-    // 其他通道...
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QQBotChannelConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_secret: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,14 +84,21 @@ pub struct PluginsConfig {
     pub entries: Option<PluginsEntries>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PluginsEntries {
+    /// 飞书插件
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub feishu: Option<FeishuPluginConfig>,
+    pub feishu: Option<PluginEntry>,
+    /// 微信插件
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub openclaw_weixin: Option<PluginEntry>,
+    /// QQ Bot 插件
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub openclaw_qqbot: Option<PluginEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FeishuPluginConfig {
+pub struct PluginEntry {
     #[serde(default = "default_true")]
     pub enabled: bool,
 }

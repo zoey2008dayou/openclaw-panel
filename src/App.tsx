@@ -4,6 +4,8 @@ import Layout from './components/Layout'
 import Welcome from './pages/Welcome'
 import ModelConfig from './pages/ModelConfig'
 import FeishuConfig from './pages/FeishuConfig'
+import QQBotConfig from './pages/QQBotConfig'
+import WeixinConfig from './pages/WeixinConfig'
 import GatewayStatus from './pages/GatewayStatus'
 import './index.css'
 
@@ -18,6 +20,8 @@ function App() {
           <Route path="/app" element={<Layout />}>
             <Route path="model" element={<ModelConfig />} />
             <Route path="feishu" element={<FeishuConfig />} />
+            <Route path="qqbot" element={<QQBotConfig />} />
+            <Route path="weixin" element={<WeixinConfig />} />
             <Route path="gateway" element={<GatewayStatus />} />
           </Route>
         </Routes>
