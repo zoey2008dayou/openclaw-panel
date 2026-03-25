@@ -32,7 +32,7 @@ export default function Welcome() {
   const [info, setInfo] = useState<OpenClawInfo | null>(null)
   const [deps, setDeps] = useState<DependencyStatus | null>(null)
   const [loading, setLoading] = useState(true)
-  const [installing, setInstalling] = useState<'pnpm' | 'openclaw' | null>(null)
+  const [installing, setInstalling] = useState<'pnpm' | 'openclaw' | 'all' | null>(null)
   const [installResult, setInstallResult] = useState<InstallResult | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -56,6 +56,22 @@ export default function Welcome() {
   useEffect(() => {
     checkAll()
   }, [])
+
+  const handleInstallAll = async () => {
+    setInstalling('all')
+    setInstallResult(null)
+    try {
+      const result = await invoke<InstallResult>('install_all_dependencies')
+      setInstallResult(result)
+      if (result.success) {
+        await checkAll()
+      }
+    } catch (e: unknown) {
+      setInstallResult({ success: false, message: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setInstalling(null)
+    }
+  }
 
   const handleInstallPnpm = async () => {
     setInstalling('pnpm')
@@ -279,23 +295,39 @@ export default function Welcome() {
 
             {/* 可以安装 OpenClaw */}
             {deps.node_installed && (deps.pnpm_installed || deps.npm_installed || deps.yarn_installed) && (
-              <button
-                onClick={handleInstallOpenClaw}
-                disabled={installing !== null}
-                className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 mb-3"
-              >
-                {installing === 'openclaw' ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>正在安装 OpenClaw...</span>
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-5 h-5" />
-                    <span>一键安装 OpenClaw</span>
-                  </>
-                )}
-              </button>
+              <>
+                <button
+                  onClick={handleInstallAll}
+                  disabled={installing !== null}
+                  className="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 mb-2"
+                >
+                  {installing === 'all' ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>正在一键安装...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-5 h-5" />
+                      <span>一键安装 (含依赖)</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={handleInstallOpenClaw}
+                  disabled={installing !== null}
+                  className="w-full px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 text-sm"
+                >
+                  {installing === 'openclaw' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>安装中...</span>
+                    </>
+                  ) : (
+                    <span>仅安装 OpenClaw</span>
+                  )}
+                </button>
+              </>
             )}
 
             <div className="flex items-center gap-4 my-4">

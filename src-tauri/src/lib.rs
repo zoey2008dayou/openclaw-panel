@@ -13,6 +13,7 @@ pub fn run() {
             check_dependencies,
             install_openclaw,
             install_pnpm,
+            install_all_dependencies,
             read_config,
             save_config,
             gateway_status,

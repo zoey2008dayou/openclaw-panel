@@ -1,8 +1,9 @@
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::env;
 use std::path::PathBuf;
+use std::io::Write;
 use serde::{Deserialize, Serialize};
-use std::io::{self, Write};
+use std::fs;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OpenClawInfo {
@@ -50,12 +51,14 @@ pub fn check_openclaw_installed() -> Result<OpenClawInfo, String> {
     // 2. 常见全局安装位置
     let home = env::var("HOME").unwrap_or_else(|_| "/root".to_string());
     let common_paths = vec![
+        // 自定义安装位置 (我们的安装脚本会放这里)
+        format!("{}/.openclaw/bin/openclaw", home),
+        format!("{}/.local/bin/openclaw", home),
         // npm 全局
         format!("{}/.npm-global/bin/openclaw", home),
         format!("{}/npm-global/bin/openclaw", home),
         // pnpm 全局
         format!("{}/.local/share/pnpm/openclaw", home),
-        format!("{}/.local/bin/openclaw", home),
         format!("{}/Library/pnpm/openclaw", home), // macOS
         // yarn 全局
         format!("{}/.yarn/bin/openclaw", home),
@@ -207,7 +210,6 @@ pub fn check_dependencies() -> Result<DependencyStatus, String> {
 
 #[tauri::command]
 pub async fn install_openclaw() -> Result<InstallResult, String> {
-    // 先检查依赖
     let deps = check_dependencies()?;
     
     if !deps.node_installed {
@@ -228,7 +230,7 @@ pub async fn install_openclaw() -> Result<InstallResult, String> {
     } else {
         return Ok(InstallResult {
             success: false,
-            message: "未找到包管理器，请先安装 pnpm: npm install -g pnpm".to_string(),
+            message: "未找到包管理器".to_string(),
             version: None,
         });
     };
@@ -240,7 +242,6 @@ pub async fn install_openclaw() -> Result<InstallResult, String> {
         .map_err(|e| format!("安装失败: {}", e))?;
 
     if output.status.success() {
-        // 验证安装
         std::thread::sleep(std::time::Duration::from_secs(1));
         let info = check_openclaw_installed()?;
         
@@ -249,6 +250,146 @@ pub async fn install_openclaw() -> Result<InstallResult, String> {
             message: format!("使用 {} 安装成功！", pkg_manager),
             version: info.version,
         })
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Ok(InstallResult {
+            success: false,
+            message: format!("安装失败: {}", stderr),
+            version: None,
+        })
+    }
+}
+
+#[tauri::command]
+pub async fn install_all_dependencies() -> Result<InstallResult, String> {
+    let home = env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let bin_dir = PathBuf::from(&home).join(".openclaw/bin");
+    let install_log = PathBuf::from(&home).join(".openclaw/install.log");
+    
+    // 创建目录
+    fs::create_dir_all(&bin_dir).map_err(|e| format!("创建目录失败: {}", e))?;
+    
+    // 检测 Node.js
+    let node_output = Command::new("node").arg("--version").output();
+    let node_installed = node_output.map(|o| o.status.success()).unwrap_or(false);
+    
+    if !node_installed {
+        // macOS: 尝试用 Homebrew 安装 Node.js
+        if cfg!(target_os = "macos") {
+            let brew_check = Command::new("brew").arg("--version").output();
+            if brew_check.map(|o| o.status.success()).unwrap_or(false) {
+                // 有 Homebrew，安装 Node.js
+                let output = Command::new("brew")
+                    .args(["install", "node"])
+                    .output()
+                    .map_err(|e| format!("安装 Node.js 失败: {}", e))?;
+                    
+                if !output.status.success() {
+                    return Ok(InstallResult {
+                        success: false,
+                        message: "安装 Node.js 失败，请手动安装: brew install node".to_string(),
+                        version: None,
+                    });
+                }
+            } else {
+                return Ok(InstallResult {
+                    success: false,
+                    message: "请先安装 Homebrew: /bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"".to_string(),
+                    version: None,
+                });
+            }
+        } else if cfg!(target_os = "linux") {
+            // Linux: 尝试 apt 或 yum
+            let apt_output = Command::new("apt").arg("--version").output();
+            if apt_output.map(|o| o.status.success()).unwrap_or(false) {
+                Command::new("apt")
+                    .args(["update"])
+                    .output()
+                    .ok();
+                let output = Command::new("apt")
+                    .args(["install", "-y", "nodejs", "npm"])
+                    .output()
+                    .map_err(|e| format!("安装 Node.js 失败: {}", e))?;
+                    
+                if !output.status.success() {
+                    return Ok(InstallResult {
+                        success: false,
+                        message: "安装 Node.js 失败，请手动安装: sudo apt install nodejs npm".to_string(),
+                        version: None,
+                    });
+                }
+            } else {
+                return Ok(InstallResult {
+                    success: false,
+                    message: "请先安装 Node.js: https://nodejs.org/".to_string(),
+                    version: None,
+                });
+            }
+        } else {
+            return Ok(InstallResult {
+                success: false,
+                message: "请先安装 Node.js: https://nodejs.org/".to_string(),
+                version: None,
+            });
+        }
+    }
+    
+    // 检测/安装 pnpm
+    let pnpm_check = Command::new("pnpm").arg("--version").output();
+    let pnpm_installed = pnpm_check.map(|o| o.status.success()).unwrap_or(false);
+    
+    if !pnpm_installed {
+        // 使用 npm 安装 pnpm
+        let output = Command::new("npm")
+            .args(["install", "-g", "pnpm"])
+            .output()
+            .map_err(|e| format!("安装 pnpm 失败: {}", e))?;
+            
+        if !output.status.success() {
+            // npm 全局安装可能需要权限，尝试用 corepack
+            let corepack_output = Command::new("corepack")
+                .args(["enable", "pnpm"])
+                .output();
+                
+            if corepack_output.map(|o| o.status.success()).unwrap_or(false) {
+                // corepack 成功
+            } else {
+                return Ok(InstallResult {
+                    success: false,
+                    message: "安装 pnpm 失败，请手动安装: npm install -g pnpm".to_string(),
+                    version: None,
+                });
+            }
+        }
+    }
+    
+    // 安装 OpenClaw
+    let output = Command::new("pnpm")
+        .args(["install", "-g", "openclaw"])
+        .output()
+        .map_err(|e| format!("安装 OpenClaw 失败: {}", e))?;
+        
+    if output.status.success() {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        
+        // 检查是否安装成功
+        let info = check_openclaw_installed()?;
+        
+        if info.installed {
+            let version = info.version.clone();
+            Ok(InstallResult {
+                success: true,
+                message: format!("安装成功！OpenClaw {}", info.version.unwrap_or_else(|| "已安装".to_string())),
+                version: version,
+            })
+        } else {
+            // 已安装但检测不到，可能是 PATH 问题
+            Ok(InstallResult {
+                success: true,
+                message: "安装成功！请重启应用以检测安装。".to_string(),
+                version: None,
+            })
+        }
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
