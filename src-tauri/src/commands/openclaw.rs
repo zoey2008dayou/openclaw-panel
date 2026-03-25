@@ -2,6 +2,7 @@ use std::process::Command;
 use std::env;
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use std::io::{self, Write};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OpenClawInfo {
@@ -10,6 +11,24 @@ pub struct OpenClawInfo {
     pub version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InstallResult {
+    pub success: bool,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DependencyStatus {
+    pub node_installed: bool,
+    pub node_version: Option<String>,
+    pub pnpm_installed: bool,
+    pub npm_installed: bool,
+    pub yarn_installed: bool,
+    pub recommended_manager: String,
 }
 
 #[tauri::command]
@@ -47,6 +66,8 @@ pub fn check_openclaw_installed() -> Result<OpenClawInfo, String> {
         format!("{}/.fnm/*/bin/openclaw", home),
         // volta
         format!("{}/.volta/bin/openclaw", home),
+        // bun
+        format!("{}/.bun/bin/openclaw", home),
         // 系统路径
         "/usr/local/bin/openclaw".to_string(),
         "/usr/bin/openclaw".to_string(),
@@ -144,16 +165,72 @@ pub fn check_openclaw_installed() -> Result<OpenClawInfo, String> {
 }
 
 #[tauri::command]
-pub async fn install_openclaw() -> Result<String, String> {
+pub fn check_dependencies() -> Result<DependencyStatus, String> {
+    // 检测 Node.js
+    let node_output = Command::new("node").arg("--version").output();
+    let (node_installed, node_version) = match node_output {
+        Ok(output) if output.status.success() => {
+            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            (true, Some(version))
+        }
+        _ => (false, None),
+    };
+    
     // 检测包管理器
-    let (pkg_manager, install_cmd) = if Command::new("pnpm").arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
+    let pnpm_installed = Command::new("pnpm").arg("--version").output()
+        .map(|o| o.status.success()).unwrap_or(false);
+    let npm_installed = Command::new("npm").arg("--version").output()
+        .map(|o| o.status.success()).unwrap_or(false);
+    let yarn_installed = Command::new("yarn").arg("--version").output()
+        .map(|o| o.status.success()).unwrap_or(false);
+    
+    // 推荐包管理器
+    let recommended_manager = if pnpm_installed {
+        "pnpm".to_string()
+    } else if npm_installed {
+        "npm".to_string()
+    } else if yarn_installed {
+        "yarn".to_string()
+    } else {
+        "none".to_string()
+    };
+    
+    Ok(DependencyStatus {
+        node_installed,
+        node_version,
+        pnpm_installed,
+        npm_installed,
+        yarn_installed,
+        recommended_manager,
+    })
+}
+
+#[tauri::command]
+pub async fn install_openclaw() -> Result<InstallResult, String> {
+    // 先检查依赖
+    let deps = check_dependencies()?;
+    
+    if !deps.node_installed {
+        return Ok(InstallResult {
+            success: false,
+            message: "请先安装 Node.js (https://nodejs.org)".to_string(),
+            version: None,
+        });
+    }
+    
+    // 选择包管理器
+    let (pkg_manager, install_cmd) = if deps.pnpm_installed {
         ("pnpm", vec!["pnpm", "install", "-g", "openclaw"])
-    } else if Command::new("npm").arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
+    } else if deps.npm_installed {
         ("npm", vec!["npm", "install", "-g", "openclaw"])
-    } else if Command::new("yarn").arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
+    } else if deps.yarn_installed {
         ("yarn", vec!["yarn", "global", "add", "openclaw"])
     } else {
-        return Err("未找到包管理器 (pnpm/npm/yarn)，请先安装 Node.js".to_string());
+        return Ok(InstallResult {
+            success: false,
+            message: "未找到包管理器，请先安装 pnpm: npm install -g pnpm".to_string(),
+            version: None,
+        });
     };
 
     // 执行安装
@@ -163,9 +240,59 @@ pub async fn install_openclaw() -> Result<String, String> {
         .map_err(|e| format!("安装失败: {}", e))?;
 
     if output.status.success() {
-        Ok(format!("使用 {} 安装成功！", pkg_manager))
+        // 验证安装
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        let info = check_openclaw_installed()?;
+        
+        Ok(InstallResult {
+            success: true,
+            message: format!("使用 {} 安装成功！", pkg_manager),
+            version: info.version,
+        })
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("安装失败: {}", stderr))
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Ok(InstallResult {
+            success: false,
+            message: format!("安装失败: {}{}", stderr, stdout),
+            version: None,
+        })
+    }
+}
+
+#[tauri::command]
+pub async fn install_pnpm() -> Result<InstallResult, String> {
+    // 检查是否已安装
+    let output = Command::new("pnpm").arg("--version").output();
+    if let Ok(output) = output {
+        if output.status.success() {
+            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            return Ok(InstallResult {
+                success: true,
+                message: format!("pnpm 已安装: {}", version),
+                version: Some(version),
+            });
+        }
+    }
+    
+    // 使用 npm 安装 pnpm
+    let output = Command::new("npm")
+        .args(["install", "-g", "pnpm"])
+        .output()
+        .map_err(|e| format!("安装 pnpm 失败: {}", e))?;
+    
+    if output.status.success() {
+        Ok(InstallResult {
+            success: true,
+            message: "pnpm 安装成功！".to_string(),
+            version: None,
+        })
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Ok(InstallResult {
+            success: false,
+            message: format!("安装失败: {}", stderr),
+            version: None,
+        })
     }
 }
