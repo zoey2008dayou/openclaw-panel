@@ -2347,6 +2347,7 @@ name = "openclaw-panel"
 version = "0.1.0"
 dependencies = [
  "dirs",
+ "glob",
  "serde",
  "serde_json",
  "tauri",

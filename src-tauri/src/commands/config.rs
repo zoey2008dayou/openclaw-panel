@@ -16,6 +16,7 @@ pub fn read_config() -> Result<OpenClawConfig, String> {
             models: None,
             channels: None,
             gateway: None,
+            plugins: None,
         });
     }
 
