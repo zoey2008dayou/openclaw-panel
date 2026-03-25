@@ -12,19 +12,55 @@ pub struct OpenClawInfo {
 
 #[tauri::command]
 pub fn check_openclaw_installed() -> Result<OpenClawInfo, String> {
-    // 尝试查找 openclaw
-    let which_output = if cfg!(target_os = "windows") {
-        Command::new("where").arg("openclaw").output()
+    // 尝试查找 openclaw - 支持多种路径
+    let paths_to_check = if cfg!(target_os = "windows") {
+        vec!["openclaw"]
     } else {
-        Command::new("which").arg("openclaw").output()
+        vec![
+            "openclaw",
+            "/usr/local/bin/openclaw",
+            "/usr/bin/openclaw",
+            &format!("{}/.local/bin/openclaw", std::env::var("HOME").unwrap_or_default()),
+            &format!("{}/.local/share/pnpm/openclaw", std::env::var("HOME").unwrap_or_default()),
+            &format!("{}/.npm-global/bin/openclaw", std::env::var("HOME").unwrap_or_default()),
+        ]
     };
 
-    match which_output {
-        Ok(output) if output.status.success() => {
-            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let mut found_path: Option<String> = None;
 
+    for path in &paths_to_check {
+        // 尝试直接执行 --version
+        let result = Command::new(path)
+            .arg("--version")
+            .output();
+
+        if let Ok(output) = result {
+            if output.status.success() {
+                found_path = Some(path.to_string());
+                break;
+            }
+        }
+    }
+
+    // 也尝试 which/where 作为备选
+    if found_path.is_none() {
+        let which_output = if cfg!(target_os = "windows") {
+            Command::new("where").arg("openclaw").output()
+        } else {
+            Command::new("which").arg("openclaw").output()
+        };
+
+        if let Ok(output) = which_output {
+            if output.status.success() {
+                found_path = Some(String::from_utf8_lossy(&output.stdout).trim().to_string());
+            }
+        }
+    }
+
+    match found_path {
+        Some(path) => {
             // 获取版本
-            let version_output = Command::new("openclaw").arg("--version").output();
+            let version_output = Command::new(&path).arg("--version").output();
 
             let version = version_output
                 .ok()
@@ -46,7 +82,7 @@ pub fn check_openclaw_installed() -> Result<OpenClawInfo, String> {
                 path: Some(path),
             })
         }
-        _ => Ok(OpenClawInfo {
+        None => Ok(OpenClawInfo {
             installed: false,
             version: None,
             path: None,
@@ -56,6 +92,27 @@ pub fn check_openclaw_installed() -> Result<OpenClawInfo, String> {
 
 #[tauri::command]
 pub async fn install_openclaw() -> Result<String, String> {
-    // 返回安装命令提示，实际安装需要用户确认
-    Ok("请运行: npm install -g openclaw".to_string())
+    // 检测包管理器
+    let (pkg_manager, install_cmd) = if Command::new("pnpm").arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
+        ("pnpm", vec!["pnpm", "install", "-g", "openclaw"])
+    } else if Command::new("npm").arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
+        ("npm", vec!["npm", "install", "-g", "openclaw"])
+    } else if Command::new("yarn").arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
+        ("yarn", vec!["yarn", "global", "add", "openclaw"])
+    } else {
+        return Err("未找到包管理器 (pnpm/npm/yarn)，请先安装 Node.js".to_string());
+    };
+
+    // 执行安装
+    let output = Command::new(&install_cmd[0])
+        .args(&install_cmd[1..])
+        .output()
+        .map_err(|e| format!("安装失败: {}", e))?;
+
+    if output.status.success() {
+        Ok(format!("使用 {} 安装成功！", pkg_manager))
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("安装失败: {}", stderr))
+    }
 }
