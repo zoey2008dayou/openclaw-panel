@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { CheckCircle, Loader2, Save } from 'lucide-react'
+import { CheckCircle, Loader2, Save, Info } from 'lucide-react'
 
 interface OpenClawConfig {
   models?: {
@@ -16,14 +16,27 @@ interface OpenClawConfig {
   gateway?: any
 }
 
-const PROVIDERS = [
-  { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', api: 'openai-completions' },
-  { id: 'anthropic', name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', api: 'anthropic-completions' },
-  { id: 'qwencode', name: 'Qwen (通义千问)', baseUrl: 'https://coding.dashscope.aliyuncs.com/v1', api: 'openai-completions' },
-  { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', api: 'openai-completions' },
-  { id: 'moonshot', name: 'Moonshot (Kimi)', baseUrl: 'https://api.moonshot.cn/v1', api: 'openai-completions' },
-  { id: 'zhipu', name: '智谱 GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', api: 'openai-completions' },
-  { id: 'local', name: '本地模型 (Ollama)', baseUrl: 'http://localhost:11434/v1', api: 'openai-completions' },
+interface Provider {
+  id: string
+  name: string
+  baseUrl: string
+  api: string
+  description?: string
+}
+
+const PROVIDERS: Provider[] = [
+  { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', api: 'openai-completions', description: 'GPT-4, GPT-3.5' },
+  { id: 'anthropic', name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', api: 'anthropic-completions', description: 'Claude 3.5' },
+  { id: 'qwencode', name: 'Qwen (通义千问)', baseUrl: 'https://coding.dashscope.aliyuncs.com/v1', api: 'openai-completions', description: 'Qwen 3' },
+  { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', api: 'openai-completions', description: 'DeepSeek Chat/Coder' },
+  { id: 'moonshot', name: 'Moonshot (Kimi)', baseUrl: 'https://api.moonshot.cn/v1', api: 'openai-completions', description: 'Kimi 模型' },
+  { id: 'zhipu', name: '智谱 GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', api: 'openai-completions', description: 'GLM-4' },
+  { id: 'local', name: '本地模型 (Ollama)', baseUrl: 'http://localhost:11434/v1', api: 'openai-completions', description: '本地部署' },
+]
+
+const API_TYPES = [
+  { id: 'openai-completions', name: 'OpenAI 兼容', description: '大多数 API 使用此格式' },
+  { id: 'anthropic-completions', name: 'Anthropic', description: 'Claude 官方 API' },
 ]
 
 export default function ModelConfig() {
@@ -31,13 +44,13 @@ export default function ModelConfig() {
   const [provider, setProvider] = useState('qwencode')
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState(PROVIDERS[2].baseUrl)
+  const [apiType, setApiType] = useState('openai-completions')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     invoke<OpenClawConfig>('read_config').then(cfg => {
       setConfig(cfg)
-      // 尝试恢复已保存的配置
       const providers = cfg.models?.providers
       if (providers) {
         const foundProvider = Object.keys(providers)[0]
@@ -45,6 +58,7 @@ export default function ModelConfig() {
           setProvider(foundProvider)
           setBaseUrl(providers[foundProvider].base_url || '')
           setApiKey(providers[foundProvider].api_key || '')
+          setApiType(providers[foundProvider].api || 'openai-completions')
         }
       }
     })
@@ -55,13 +69,13 @@ export default function ModelConfig() {
     const p = PROVIDERS.find(p => p.id === id)
     if (p) {
       setBaseUrl(p.baseUrl)
+      setApiType(p.api)
     }
   }
 
   const handleSave = async () => {
     setSaving(true)
     try {
-      const selectedProvider = PROVIDERS.find(p => p.id === provider)
       const newConfig = {
         ...config,
         models: {
@@ -70,7 +84,7 @@ export default function ModelConfig() {
             [provider]: {
               base_url: baseUrl,
               api_key: apiKey,
-              api: selectedProvider?.api || 'openai-completions',
+              api: apiType,
               models: [{ id: 'default', name: 'Default Model' }]
             }
           }
@@ -86,9 +100,17 @@ export default function ModelConfig() {
     }
   }
 
+  const selectedProvider = PROVIDERS.find(p => p.id === provider)
+
   return (
     <div className="max-w-2xl">
-      <h2 className="text-xl font-semibold text-gray-800 mb-6">模型配置</h2>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-semibold text-gray-800">模型配置</h2>
+        <div className="flex items-center gap-1 text-xs text-gray-400">
+          <Info className="w-3 h-3" />
+          <span>配置格式: OpenClaw 2026.3.13</span>
+        </div>
+      </div>
       
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -101,25 +123,48 @@ export default function ModelConfig() {
               onClick={() => handleProviderChange(p.id)}
               className={`p-3 rounded-lg border text-left transition-colors ${
                 provider === p.id
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                  ? 'border-blue-500 bg-blue-50'
                   : 'border-gray-200 hover:border-gray-300'
               }`}
             >
-              <span className="font-medium">{p.name}</span>
+              <span className={`font-medium ${provider === p.id ? 'text-blue-700' : 'text-gray-700'}`}>
+                {p.name}
+              </span>
+              {p.description && (
+                <p className="text-xs text-gray-400 mt-0.5">{p.description}</p>
+              )}
             </button>
           ))}
         </div>
 
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          API Base URL
-        </label>
-        <input
-          type="text"
-          value={baseUrl}
-          onChange={e => setBaseUrl(e.target.value)}
-          className="w-full px-4 py-2 border border-gray-200 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="https://api.example.com/v1"
-        />
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              API Base URL
+            </label>
+            <input
+              type="text"
+              value={baseUrl}
+              onChange={e => setBaseUrl(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="https://api.example.com/v1"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              API 类型
+            </label>
+            <select
+              value={apiType}
+              onChange={e => setApiType(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {API_TYPES.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
 
         <label className="block text-sm font-medium text-gray-700 mb-2">
           API Key
@@ -131,6 +176,16 @@ export default function ModelConfig() {
           className="w-full px-4 py-2 border border-gray-200 rounded-lg mb-6 focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="sk-..."
         />
+
+        {selectedProvider && (
+          <div className="mb-4 p-3 bg-gray-50 rounded-lg text-sm text-gray-500">
+            <strong>配置将保存到:</strong>
+            <code className="ml-2 text-blue-600">models.providers.{provider}</code>
+            <div className="mt-1 text-xs">
+              base_url, api_key, api: "{apiType}"
+            </div>
+          </div>
+        )}
 
         <div className="flex gap-3">
           <button
